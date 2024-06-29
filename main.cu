@@ -40,7 +40,7 @@ __global__ void fft(const uint8_t *p_srcSignal, uint8_t *p_dstSignal, uint32_t p
 }
 
 void run(const std::vector<uint8_t> &p_signal, uint32_t p_resultOffset) {
-  const uint32_t stepCount = 2;
+  const uint32_t stepCount = 100;
 
   CUstream stream;
   NC_ASSERT_CUDA(cuStreamCreate(&stream, CU_STREAM_DEFAULT));
@@ -107,7 +107,7 @@ int main(int p_argc, char *p_argv[]) {
   }
   for (char c : input) {
     if (c < '0' || '9' < c) {
-      std::cerr << "Every single character in the signal string must be digit between 0 and 9, inclusively."
+      std::cerr << "Every single character in the signal string must be a digit between 0 and 9, inclusively."
                 << std::endl;
       return 1;
     }
