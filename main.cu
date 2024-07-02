@@ -78,7 +78,7 @@ int main(int p_argc, char *p_argv[]) {
   const uint32_t repeatCount = 10000;
 
   if (p_argc < 2) {
-    std::cout << "Usage: aoc-2019-16 <signal file | raw signal>";
+    std::cout << "Usage: aoc-2019-16 <signal file | raw signal>" << std::endl;
     return 0;
   }
   NC_ASSERT_CUDA(cuInit(0));
