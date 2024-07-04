@@ -60,6 +60,7 @@ void run(const std::vector<uint8_t> &p_signal, uint32_t p_resultOffset) {
     uint32_t numThreadsPerBlock = 128;
     uint32_t numBlocks = (p_signal.size() + numThreadsPerBlock - 1) / numThreadsPerBlock;
     fft<<<numBlocks, numThreadsPerBlock>>>(srcSignalDevMem, dstSignalDevMem, (uint32_t)p_signal.size());
+    NC_ASSERT_CUDA(cudaDeviceSynchronize());
     std::swap(srcSignalDevMem, dstSignalDevMem);
     auto end = std::chrono::high_resolution_clock::now();
     auto seconds = std::chrono::duration_cast<std::chrono::duration<float>>(end - beg);
