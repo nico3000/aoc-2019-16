@@ -1,5 +1,4 @@
 #include <cuda.h>
-#include <cuda_runtime.h>
 
 #include <array>
 #include <chrono>
@@ -7,22 +6,19 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
-#include <thread>
 #include <vector>
 
-#define NC_ASSERT_CUDA(_cmd)                                                                                           \
-  do {                                                                                                                 \
-    if (CUresult _res = _cmd; _res != CUDA_SUCCESS) {                                                                  \
-      const char *error = "unknown cuda error";                                                                        \
-      cuGetErrorName(_res, &error);                                                                                    \
-      std::cerr << error << std::endl;                                                                                 \
-      exit(1);                                                                                                         \
-    }                                                                                                                  \
-  } while (0)
+#define NC_ASSERT_CUDA(_cmd) checkCudaError(_cmd)
+
+void checkCudaError(cudaError p_runtimeError) {
+  if (p_runtimeError != cudaSuccess) {
+    std::cerr << cudaGetErrorName(p_runtimeError) << std::endl;
+    exit(1);
+  }
+}
 
 __global__ void fft(const uint8_t *p_srcSignal, uint8_t *p_dstSignal, uint32_t p_signalSize) {
   uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  printf("test\n");
   if (p_signalSize <= idx) {
     return;
   }
@@ -44,32 +40,26 @@ __global__ void fft(const uint8_t *p_srcSignal, uint8_t *p_dstSignal, uint32_t p
 void run(const std::vector<uint8_t> &p_signal, uint32_t p_resultOffset) {
   const uint32_t stepCount = 100;
 
-  CUdevice dev;
-  NC_ASSERT_CUDA(cuDeviceGet(&dev, 0));
-  char devName[128];
-  NC_ASSERT_CUDA(cuDeviceGetName(devName, sizeof(devName), dev));
-  std::cout << "Selected CUDA device: " << devName << std::endl;
+  int dev = 0;
+  cudaDeviceProp devProps;
+  NC_ASSERT_CUDA(cudaGetDeviceProperties(&devProps, dev));
+  std::cout << "Selected CUDA device: " << devProps.name << std::endl;
 
-  CUcontext ctx;
-  NC_ASSERT_CUDA(cuCtxCreate(&ctx, CU_CTX_SCHED_BLOCKING_SYNC, dev));
-  NC_ASSERT_CUDA(cuCtxPushCurrent(ctx));
+  NC_ASSERT_CUDA(cudaInitDevice(dev, 0, 0));
+  NC_ASSERT_CUDA(cudaSetDevice(dev));
 
-  CUstream stream;
-  NC_ASSERT_CUDA(cuStreamCreate(&stream, CU_STREAM_DEFAULT));
-
-  CUdeviceptr srcSignalDevMem, dstSignalDevMem;
-  NC_ASSERT_CUDA(cuMemAlloc(&srcSignalDevMem, p_signal.size()));
-  NC_ASSERT_CUDA(cuMemAlloc(&dstSignalDevMem, p_signal.size()));
-  NC_ASSERT_CUDA(cuMemcpyHtoD(srcSignalDevMem, p_signal.data(), p_signal.size()));
+  uint8_t *srcSignalDevMem;
+  uint8_t *dstSignalDevMem;
+  NC_ASSERT_CUDA(cudaMalloc(&srcSignalDevMem, p_signal.size()));
+  NC_ASSERT_CUDA(cudaMalloc(&dstSignalDevMem, p_signal.size()));
+  NC_ASSERT_CUDA(cudaMemcpy(srcSignalDevMem, p_signal.data(), p_signal.size(), cudaMemcpyHostToDevice));
 
   std::cout << "Ready for number crunching!" << std::endl;
   for (uint32_t i = 0; i < stepCount; ++i) {
     auto beg = std::chrono::high_resolution_clock::now();
     uint32_t numThreadsPerBlock = 128;
     uint32_t numBlocks = (p_signal.size() + numThreadsPerBlock - 1) / numThreadsPerBlock;
-    fft<<<numBlocks, numThreadsPerBlock, 0, stream>>>((const uint8_t *)srcSignalDevMem, (uint8_t *)dstSignalDevMem,
-                                                      (uint32_t)p_signal.size());
-    NC_ASSERT_CUDA(cuStreamSynchronize(stream));
+    fft<<<numBlocks, numThreadsPerBlock>>>(srcSignalDevMem, dstSignalDevMem, (uint32_t)p_signal.size());
     std::swap(srcSignalDevMem, dstSignalDevMem);
     auto end = std::chrono::high_resolution_clock::now();
     auto seconds = std::chrono::duration_cast<std::chrono::duration<float>>(end - beg);
@@ -78,12 +68,9 @@ void run(const std::vector<uint8_t> &p_signal, uint32_t p_resultOffset) {
   }
 
   std::array<uint8_t, 8> result;
-  NC_ASSERT_CUDA(cuMemcpyDtoH(result.data(), srcSignalDevMem + p_resultOffset, result.size()));
-  NC_ASSERT_CUDA(cuMemFree(dstSignalDevMem));
-  NC_ASSERT_CUDA(cuMemFree(srcSignalDevMem));
-  NC_ASSERT_CUDA(cuStreamDestroy(stream));
-  NC_ASSERT_CUDA(cuCtxPopCurrent(nullptr));
-  NC_ASSERT_CUDA(cuCtxDestroy(ctx));
+  NC_ASSERT_CUDA(cudaMemcpy(result.data(), srcSignalDevMem + p_resultOffset, result.size(), cudaMemcpyDeviceToHost));
+  NC_ASSERT_CUDA(cudaFree(dstSignalDevMem));
+  NC_ASSERT_CUDA(cudaFree(srcSignalDevMem));
 
   std::cout << "Result: ";
   for (uint8_t c : result) {
@@ -115,10 +102,9 @@ int main(int p_argc, char *p_argv[]) {
     return 0;
   }
 
-  NC_ASSERT_CUDA(cuInit(0));
-  int devCount;
-  NC_ASSERT_CUDA(cuDeviceGetCount(&devCount));
-  if (devCount == 0) {
+  int numDevices;
+  NC_ASSERT_CUDA(cudaGetDeviceCount(&numDevices));
+  if (numDevices == 0) {
     std::cerr << "No CUDA devices available." << std::endl;
     return 1;
   }

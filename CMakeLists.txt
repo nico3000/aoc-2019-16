@@ -7,6 +7,5 @@ project(aoc-2019-16 LANGUAGES CXX CUDA)
 find_package(CUDAToolkit REQUIRED)
 
 add_executable(aoc-2019-16 main.cu)
-target_link_libraries(aoc-2019-16 CUDA::cuda_driver)
 
 install(TARGETS aoc-2019-16)
